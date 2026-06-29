@@ -1,0 +1,9 @@
+# compiled binary
+/git-digest
+
+# local digests / output
+/digests/
+
+# editor / OS cruft
+*.swp
+.DS_Store
