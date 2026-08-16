@@ -1,5 +1,7 @@
 # git-digest
 
+[![Read about the commits](https://img.shields.io/badge/commits-code%20blog-1a1a1a?style=flat-square)](https://wwel.sh/digest.html?repo=git-digest)
+
 **Single-binary Go tool that generates an AI-written daily digest of your GitHub commit activity.**
 
 It fetches your recent commits, builds a grounded prompt, and has an LLM write a retrospective developer-journal entry — then saves it locally and (optionally) serves it in a clean dark-mode web UI.
