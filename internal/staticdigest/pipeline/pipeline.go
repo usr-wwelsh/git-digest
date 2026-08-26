@@ -7,7 +7,6 @@ package pipeline
 import (
 	"encoding/json"
 	"io"
-	"path"
 	"strings"
 
 	"github.com/usr-wwelsh/git-digest/internal/staticdigest/classify"
@@ -89,7 +88,7 @@ func buildCommit(ac activityCommit) facts.CommitFacts {
 				c.Imports = append(c.Imports, imp)
 			}
 		}
-		if a := areaOf(af.Filename); a != "" && !areaSet[a] {
+		if a := facts.AreaOf(af.Filename); a != "" && !areaSet[a] {
 			areaSet[a] = true
 			c.Areas = append(c.Areas, a)
 		}
@@ -119,17 +118,4 @@ func isNotableSubject(subject string) bool {
 		}
 	}
 	return false
-}
-
-// areaOf reduces a file path to its first one or two directory segments.
-func areaOf(p string) string {
-	dir := path.Dir(p)
-	segs := strings.Split(dir, "/")
-	if len(segs) == 0 || segs[0] == "." {
-		return ""
-	}
-	if len(segs) >= 2 {
-		return segs[0] + "/" + segs[1]
-	}
-	return segs[0]
 }

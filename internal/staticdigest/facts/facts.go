@@ -2,6 +2,11 @@
 // activity JSON in, CommitFacts/RepoFacts out, rendered to markdown.
 package facts
 
+import (
+	"path"
+	"strings"
+)
+
 type FileChange struct {
 	Path         string   `json:"path"`
 	Additions    int      `json:"additions"`
@@ -41,4 +46,18 @@ type RepoFacts struct {
 	Name        string        `json:"name"`
 	Description string        `json:"description,omitempty"`
 	Commits     []CommitFacts `json:"commits"`
+}
+
+// AreaOf reduces a file path to its first one or two directory segments —
+// the coarse bucket a change belongs to.
+func AreaOf(p string) string {
+	dir := path.Dir(p)
+	segs := strings.Split(dir, "/")
+	if len(segs) == 0 || segs[0] == "." {
+		return ""
+	}
+	if len(segs) >= 2 {
+		return segs[0] + "/" + segs[1]
+	}
+	return segs[0]
 }
