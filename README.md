@@ -27,8 +27,9 @@ git-digest needs *something* to write the prose. You pick:
 
 - **Claude Code CLI** (default) — convenient, but uses Anthropic's cloud models. Requires the [`claude`](https://github.com/anthropics/claude-code) CLI installed and authenticated.
 - **Your own LLM gateway** — point it at any OpenAI `/v1/chat/completions`-compatible endpoint (local llama.cpp, Ollama proxy, self-hosted server, etc.) with `--gateway`. Fully offline if your gateway is.
+- **No LLM at all** — `--static` runs [static-digest](https://github.com/usr-wwelsh/static-digest), a deterministic template pipeline (classify commits, parse hunks, score importance, render markdown). No API, no model, no hallucinations — every line traces to a commit fact.
 
-There's no built-in API-key path — it's the CLI or your own endpoint.
+There's no built-in API-key path — it's the CLI, your own endpoint, or `--static`.
 
 ---
 
@@ -59,6 +60,7 @@ It asks, one question at a time, for your GitHub token, LLM backend, model, repo
 | `-serve`     | false   | Start web UI at `http://localhost:4242` after generating |
 | `-push`      | false   | Copy digest into the portfolio repo's `digests/` folder |
 | `-gateway`   | false   | Use your LLM gateway instead of the Claude CLI |
+| `-static`    | false   | Skip the LLM entirely, render with the deterministic static-digest pipeline |
 | `-settings`  | false   | Run the interactive setup and exit |
 | `-no-patches`| false   | Skip file diffs in sparse commits |
 | `-no-prev`   | false   | Don't include the previous digest as a style reference |

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/usr-wwelsh/git-digest/internal/staticdigest"
 )
 
 const apiBase = "https://api.github.com"
@@ -81,6 +84,7 @@ func main() {
 	push := flag.Bool("push", false, "copy digest into portfolio repo (GIT_DIGEST_PORTFOLIO)")
 	gateway := flag.Bool("gateway", false, "use your OpenAI-compatible LLM gateway (GIT_DIGEST_GATEWAY_URL)")
 	local := flag.Bool("local", false, "alias for -gateway")
+	static := flag.Bool("static", false, "generate the digest with the deterministic static-digest pipeline instead of an LLM (no API, no network beyond GitHub, no hallucinations)")
 	settings := flag.Bool("settings", false, "run interactive setup and exit")
 	noPatches := flag.Bool("no-patches", false, "skip file diffs in sparse commits")
 	noPrev := flag.Bool("no-prev", false, "skip adding previous digest to context")
@@ -189,10 +193,71 @@ func main() {
 	for _, s := range active {
 		totalCommits += len(s.commits)
 	}
-	includePatches := !*noPatches && totalCommits <= sparseCommitThreshold
+
+	fmt.Println("─────────────────────────────────")
+	fmt.Printf(" Git Digest — %s\n", time.Now().Format("2006-01-02"))
+	fmt.Println("─────────────────────────────────")
+	fmt.Println()
+
+	var output strings.Builder
+	if *static {
+		activity, err := buildStaticActivity(token, active)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "static: %v\n", err)
+			os.Exit(1)
+		}
+		digest, err := staticdigest.Generate(bytes.NewReader(activity))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "static: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(digest)
+		output.WriteString(digest)
+	} else if err := generateWithLLM(token, username, *lookback, active, totalCommits, *noPatches, *noPrev, *personality, *note, *gateway, *local, &output); err != nil {
+		fmt.Fprintf(os.Stderr, "digest: %v\n", err)
+		os.Exit(1)
+	}
+
+	mdPath, err := writeDigest(time.Now(), *lookback, output.String(), digestsDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warn: write: %v\n", err)
+	}
+
+	if err := writeCommits(time.Now(), *lookback, active, digestsDir); err != nil {
+		fmt.Fprintf(os.Stderr, "warn: write commits: %v\n", err)
+	}
+
+	if *push && mdPath != "" {
+		if err := pushToPortfolio(mdPath); err != nil {
+			fmt.Fprintf(os.Stderr, "push: %v\n", err)
+		}
+	}
+
+	if *serve {
+		if err := startServer(digestsDir, mdPath); err != nil {
+			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
+			os.Exit(1)
+		}
+	} else if !*push && mdPath != "" && os.Getenv("GIT_DIGEST_PORTFOLIO") != "" {
+		fmt.Print("Push to portfolio? [y/N]: ")
+		var ans string
+		fmt.Scanln(&ans)
+		if strings.ToLower(strings.TrimSpace(ans)) == "y" {
+			if err := pushToPortfolio(mdPath); err != nil {
+				fmt.Fprintf(os.Stderr, "push: %v\n", err)
+			}
+		}
+	}
+}
+
+// generateWithLLM builds the grounded prompt and streams it to the configured
+// LLM backend (Claude CLI or an OpenAI-compatible gateway), writing the
+// response into output.
+func generateWithLLM(token, username string, lookback int, active []repoCommitSet, totalCommits int, noPatches, noPrev bool, personality, note string, gateway, local bool, output *strings.Builder) error {
+	includePatches := !noPatches && totalCommits <= sparseCommitThreshold
 
 	var prompt strings.Builder
-	if !*noPrev {
+	if !noPrev {
 		if prev := latestDigest(); prev != "" {
 			prompt.WriteString("Previous digest (style/tone reference only — NOT current activity, do not restate its content):\n")
 			prompt.WriteString("---\n")
@@ -200,12 +265,12 @@ func main() {
 			prompt.WriteString("\n---\n\n")
 		}
 	}
-	if *note != "" {
+	if note != "" {
 		prompt.WriteString("Manual notes (private/offline work not captured in GitHub):\n")
-		prompt.WriteString(*note + "\n\n")
+		prompt.WriteString(note + "\n\n")
 	}
 	prompt.WriteString(fmt.Sprintf("GitHub commits for %s, %s (last %d day(s)):\n\n",
-		username, time.Now().Format("2006-01-02"), *lookback))
+		username, time.Now().Format("2006-01-02"), lookback))
 	for _, s := range active {
 		if s.description != "" {
 			prompt.WriteString(fmt.Sprintf("**%s** — %s\n", s.name, s.description))
@@ -252,66 +317,68 @@ func main() {
 	prompt.WriteString("Write a developer journal entry in markdown with:\n")
 	prompt.WriteString("1. `## Summary` — what shipped, what you were deep in, anything notable across repos\n")
 	prompt.WriteString("2. `## Per-Repo Activity` — one `### repo` subsection per repo, 1-2 sentences each\n")
-	if *personality != "" {
-		prompt.WriteString("Tone: " + *personality + ". No 'next steps', no 'you should'. Just what happened and why it matters.\n")
+	if personality != "" {
+		prompt.WriteString("Tone: " + personality + ". No 'next steps', no 'you should'. Just what happened and why it matters.\n")
 	} else {
 		prompt.WriteString("Tone: retrospective and observational, like a code blog post. No 'next steps', no 'you should'. Just what happened and why it matters.\n")
 	}
 	prompt.WriteString("Ground every claim in the commit messages and diffs above. Do not invent features, filenames, or behaviors not evidenced in the data.")
-
-	fmt.Println("─────────────────────────────────")
-	fmt.Printf(" Git Digest — %s\n", time.Now().Format("2006-01-02"))
-	fmt.Println("─────────────────────────────────")
-	fmt.Println()
 
 	promptStr := prompt.String()
 	if os.Getenv("DEBUG_PROMPT") != "" {
 		fmt.Fprintf(os.Stderr, "\n=== PROMPT ===\n%s\n=== END ===\n\n", promptStr)
 	}
 
-	useGateway := *gateway || *local || os.Getenv("GIT_DIGEST_BACKEND") == "gateway"
-	var output strings.Builder
-	var streamErr error
+	useGateway := gateway || local || os.Getenv("GIT_DIGEST_BACKEND") == "gateway"
 	if useGateway {
-		streamErr = streamGateway(promptStr, &output)
-	} else {
-		streamErr = streamClaude(promptStr, &output)
+		return streamGateway(promptStr, output)
 	}
-	if err := streamErr; err != nil {
-		fmt.Fprintf(os.Stderr, "digest: %v\n", err)
-		os.Exit(1)
+	return streamClaude(promptStr, output)
+}
+
+// buildStaticActivity fetches full (untruncated) file stats and patches for
+// every commit and marshals them into static-digest's activity JSON schema —
+// the same shape writeCommits persists, plus per-file diffs it doesn't.
+func buildStaticActivity(token string, active []repoCommitSet) ([]byte, error) {
+	type sdFile struct {
+		Filename  string `json:"filename"`
+		Additions int    `json:"additions"`
+		Deletions int    `json:"deletions"`
+		Patch     string `json:"patch"`
+	}
+	type sdCommit struct {
+		SHA     string   `json:"sha"`
+		Message string   `json:"message"`
+		URL     string   `json:"url"`
+		Files   []sdFile `json:"files"`
+	}
+	type sdRepo struct {
+		Commits []sdCommit `json:"commits"`
 	}
 
-	mdPath, err := writeDigest(time.Now(), *lookback, output.String(), digestsDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warn: write: %v\n", err)
-	}
-
-	if err := writeCommits(time.Now(), *lookback, active, digestsDir); err != nil {
-		fmt.Fprintf(os.Stderr, "warn: write commits: %v\n", err)
-	}
-
-	if *push && mdPath != "" {
-		if err := pushToPortfolio(mdPath); err != nil {
-			fmt.Fprintf(os.Stderr, "push: %v\n", err)
-		}
-	}
-
-	if *serve {
-		if err := startServer(digestsDir, mdPath); err != nil {
-			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
-			os.Exit(1)
-		}
-	} else if !*push && mdPath != "" && os.Getenv("GIT_DIGEST_PORTFOLIO") != "" {
-		fmt.Print("Push to portfolio? [y/N]: ")
-		var ans string
-		fmt.Scanln(&ans)
-		if strings.ToLower(strings.TrimSpace(ans)) == "y" {
-			if err := pushToPortfolio(mdPath); err != nil {
-				fmt.Fprintf(os.Stderr, "push: %v\n", err)
+	out := make(map[string]sdRepo, len(active))
+	for _, s := range active {
+		var commits []sdCommit
+		for _, c := range s.commits {
+			msg := strings.SplitN(c.Commit.Message, "\n", 2)[0]
+			stats, err := commitStats(token, s.name, c.SHA)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warn %s@%s: %v\n", s.name, c.SHA[:7], err)
 			}
+			var files []sdFile
+			for _, f := range stats {
+				files = append(files, sdFile{f.Filename, f.Additions, f.Deletions, f.Patch})
+			}
+			commits = append(commits, sdCommit{
+				SHA:     c.SHA,
+				Message: msg,
+				URL:     fmt.Sprintf("https://github.com/%s/commit/%s", s.name, c.SHA),
+				Files:   files,
+			})
 		}
+		out[s.name] = sdRepo{Commits: commits}
 	}
+	return json.Marshal(out)
 }
 
 func getUsername(token string) (string, error) {
