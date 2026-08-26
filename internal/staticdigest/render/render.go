@@ -90,17 +90,27 @@ func Digest(repos []facts.RepoFacts, note string) string {
 	}
 	if best := biggestChange(repos); best != nil {
 		sb.WriteString(fmt.Sprintf(" Biggest change in %s: %s.",
-			best.repo.Name, strings.ToLower(firstWord(best.commit.Type, verbPast))+clauseBody(best.commit)))
+			repoBaseName(best.repo.Name), strings.ToLower(firstWord(best.commit.Type, verbPast))+clauseBody(best.commit)))
 	}
 	sb.WriteString("\n\n")
 
 	sb.WriteString("## Per-Repo Activity\n")
 	for _, r := range repos {
-		sb.WriteString("\n### " + r.Name + "\n\n")
+		sb.WriteString("\n### " + repoBaseName(r.Name) + "\n\n")
 		sb.WriteString(repoParagraph(r))
 		sb.WriteString("\n")
 	}
 	return sb.String()
+}
+
+// repoBaseName strips a "owner/repo" full name down to just "repo" for
+// display in prose and headers — the owner segment is redundant once every
+// digest is scoped to a single GitHub account, and full names read as noise.
+func repoBaseName(name string) string {
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		return name[i+1:]
+	}
+	return name
 }
 
 func summaryLine(total, nrepos int) string {
@@ -160,7 +170,7 @@ func genesisRepoNames(repos []facts.RepoFacts) []string {
 	var out []string
 	for _, r := range repos {
 		if genesisCommit(r.Commits) != nil {
-			out = append(out, r.Name)
+			out = append(out, repoBaseName(r.Name))
 		}
 	}
 	return out
@@ -171,7 +181,7 @@ func breakingRepos(repos []facts.RepoFacts) []string {
 	for _, r := range repos {
 		for _, c := range r.Commits {
 			if c.Breaking {
-				out = append(out, r.Name)
+				out = append(out, repoBaseName(r.Name))
 				break
 			}
 		}

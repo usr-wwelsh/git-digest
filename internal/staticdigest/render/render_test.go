@@ -30,11 +30,11 @@ func TestSingleFixRepo(t *testing.T) {
 	want := strings.Join([]string{
 		"## Summary",
 		"",
-		"1 commit across 1 repo. Biggest change in usr-wwelsh/git-digest: fixed systemd absolute path (promptSystemd()).",
+		"1 commit across 1 repo. Biggest change in git-digest: fixed systemd absolute path (promptSystemd()).",
 		"",
 		"## Per-Repo Activity",
 		"",
-		"### usr-wwelsh/git-digest",
+		"### git-digest",
 		"",
 		"Fixed systemd absolute path (promptSystemd()).",
 		"",
@@ -119,7 +119,7 @@ func TestGenesisCommitSoleRepo(t *testing.T) {
 	if !strings.Contains(out, "New repo: bootstrapped with an init commit (3 files).") {
 		t.Errorf("missing genesis phrasing:\n%s", out)
 	}
-	if !strings.Contains(out, "usr-wwelsh/new-thing launched as a new repo.") {
+	if !strings.Contains(out, "new-thing launched as a new repo.") {
 		t.Errorf("missing summary new-repo mention:\n%s", out)
 	}
 	if strings.Contains(out, "Worked on init") {
@@ -147,10 +147,10 @@ func TestBiggestChangeSkipsGenesis(t *testing.T) {
 		Name:    "r/x",
 		Commits: []facts.CommitFacts{g, fixCommit()},
 	}}, "")
-	if strings.Contains(out, "Biggest change in r/x: worked on init") {
+	if strings.Contains(out, "Biggest change in x: worked on init") {
 		t.Errorf("genesis commit should not be picked as biggest change:\n%s", out)
 	}
-	if !strings.Contains(out, "Biggest change in r/x: fixed systemd absolute path") {
+	if !strings.Contains(out, "Biggest change in x: fixed systemd absolute path") {
 		t.Errorf("non-genesis commit should be picked as biggest change:\n%s", out)
 	}
 }
@@ -160,7 +160,7 @@ func TestMultipleNewRepos(t *testing.T) {
 		{Name: "r/a", Commits: []facts.CommitFacts{genesisCommitFixture()}},
 		{Name: "r/b", Commits: []facts.CommitFacts{genesisCommitFixture()}},
 	}, "")
-	if !strings.Contains(out, "New repos launched: r/a, r/b.") {
+	if !strings.Contains(out, "New repos launched: a, b.") {
 		t.Errorf("missing multi-repo genesis summary:\n%s", out)
 	}
 }
@@ -194,7 +194,7 @@ func TestNotePrependedVerbatimToSummary(t *testing.T) {
 		Commits: []facts.CommitFacts{fixCommit()},
 	}}, "Juggling a birthday party but managed to get a little work in today")
 	want := "## Summary\n\nJuggling a birthday party but managed to get a little work in today. " +
-		"1 commit across 1 repo. Biggest change in usr-wwelsh/git-digest: fixed systemd absolute path (promptSystemd())."
+		"1 commit across 1 repo. Biggest change in git-digest: fixed systemd absolute path (promptSystemd())."
 	if !strings.HasPrefix(out, want) {
 		t.Errorf("note should lead the summary verbatim:\ngot:\n%s\nwant prefix:\n%s", out, want)
 	}
@@ -221,5 +221,17 @@ func TestNoteWithoutAnyCommits(t *testing.T) {
 func TestEmptyInput(t *testing.T) {
 	if out := Digest(nil, ""); out != "" {
 		t.Errorf("empty input should give empty digest, got %q", out)
+	}
+}
+
+func TestRepoBaseNameStripsOwner(t *testing.T) {
+	if got := repoBaseName("usr-wwelsh/git-digest"); got != "git-digest" {
+		t.Errorf("got %q, want %q", got, "git-digest")
+	}
+}
+
+func TestRepoBaseNameKeepsBareName(t *testing.T) {
+	if got := repoBaseName("git-digest"); got != "git-digest" {
+		t.Errorf("got %q, want %q", got, "git-digest")
 	}
 }
