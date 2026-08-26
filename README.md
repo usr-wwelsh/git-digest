@@ -2,9 +2,9 @@
 
 [![Read about the commits](https://img.shields.io/badge/commits-code%20blog-1a1a1a?style=flat-square)](https://wwel.sh/digest.html?repo=git-digest)
 
-**Single-binary Go tool that generates an AI-written daily digest of your GitHub commit activity.**
+**Single-binary Go tool that turns your GitHub commit activity into a daily dev-journal digest — AI-written, or fully deterministic and offline with `-static`.**
 
-It fetches your recent commits, builds a grounded prompt, and has an LLM write a retrospective developer-journal entry — then saves it locally and (optionally) serves it in a clean dark-mode web UI.
+It fetches your recent commits and renders a structured markdown digest: either an LLM writes a retrospective developer-journal entry from a grounded prompt, or the built-in deterministic pipeline classifies and scores the commits itself with no model in the loop. Either way, it saves the digest locally and (optionally) serves it in a clean dark-mode web UI.
 
 ---
 
@@ -12,10 +12,9 @@ It fetches your recent commits, builds a grounded prompt, and has an LLM write a
 
 1. Fetches your GitHub repos filtered by recent push activity
 2. Pulls your commits from the last N days (with optional file diffs)
-3. Builds a grounded prompt and streams it to an LLM
-4. Generates a structured markdown digest (summary + per-repo breakdown)
-5. Saves the digest locally
-6. **Optionally:**
+3. Renders a structured markdown digest (summary + per-repo breakdown) — either an LLM writes it from a grounded prompt, or `-static` builds it deterministically with no model at all
+4. Saves the digest locally
+5. **Optionally:**
    - Serves all digests via a built-in dark-mode web UI
    - Copies the digest into a "portfolio" repo's `digests/` folder
 
@@ -27,9 +26,9 @@ git-digest needs *something* to write the prose. You pick:
 
 - **Claude Code CLI** (default) — convenient, but uses Anthropic's cloud models. Requires the [`claude`](https://github.com/anthropics/claude-code) CLI installed and authenticated.
 - **Your own LLM gateway** — point it at any OpenAI `/v1/chat/completions`-compatible endpoint (local llama.cpp, Ollama proxy, self-hosted server, etc.) with `--gateway`. Fully offline if your gateway is.
-- **No LLM at all** — `--static` runs [static-digest](https://github.com/usr-wwelsh/static-digest), a deterministic template pipeline (classify commits, parse hunks, score importance, render markdown). No API, no model, no hallucinations — every line traces to a commit fact.
+- **No LLM at all** — `-static` runs the built-in deterministic template pipeline (classify commits, parse hunks, score importance, render markdown). No API, no model, no hallucinations — every line traces to a commit fact.
 
-There's no built-in API-key path — it's the CLI, your own endpoint, or `--static`.
+There's no built-in API-key path — it's the CLI, your own endpoint, or `-static`.
 
 ---
 
