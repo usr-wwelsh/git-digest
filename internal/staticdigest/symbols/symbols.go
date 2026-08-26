@@ -14,6 +14,12 @@ var identBeforeParen = regexp.MustCompile(`([A-Za-z_$][A-Za-z0-9_$.]*)\s*\(`)
 var keywords = map[string]bool{
 	"if": true, "for": true, "while": true, "switch": true,
 	"return": true, "catch": true, "else": true, "do": true,
+	// Go-style declaration blocks leak as hunk contexts ("import (", "var (")
+	// and read as junk evidence if they slip through.
+	"import": true, "const": true, "var": true, "type": true,
+	"struct": true, "interface": true, "package": true, "func": true,
+	"enum": true, "impl": true, "mod": true, "namespace": true,
+	"using": true, "class": true,
 }
 
 // CleanFuncName reduces a git hunk-header function context to "name()".

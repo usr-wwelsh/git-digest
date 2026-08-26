@@ -13,6 +13,11 @@ func TestCleanFuncName(t *testing.T) {
 		{"export default function handler(req, res) {", "handler()"},
 		{"", ""},
 		{"if (x > 3) {", ""},
+		{"import (", ""},
+		{"var (", ""},
+		{"const (", ""},
+		{"type (", ""},
+		{"struct {", ""},
 	}
 	for _, tt := range tests {
 		if got := CleanFuncName(tt.ctx); got != tt.want {
