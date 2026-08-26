@@ -64,6 +64,8 @@ func buildCommit(ac activityCommit) facts.CommitFacts {
 		Type:     res.Type,
 		Scope:    res.Scope,
 		Breaking: res.Breaking,
+		Genesis:  isGenesisSubject(res.Subject),
+		Notable:  isNotableSubject(res.Subject),
 	}
 
 	areaSet := map[string]bool{}
@@ -96,6 +98,27 @@ func buildCommit(ac activityCommit) facts.CommitFacts {
 	c.RiskFlags = risk.Flags(c.Files)
 	c.Score = score.Of(c)
 	return c
+}
+
+// isGenesisSubject reports whether a commit subject marks a repo's own first
+// commit — the bare "init" (or "initial commit") convention.
+func isGenesisSubject(subject string) bool {
+	s := strings.ToLower(strings.TrimSpace(subject))
+	return s == "init" || s == "initial commit"
+}
+
+// notableKeywords mark commits that are narratively significant regardless
+// of diff size — a postmortem is a small doc change with an outsized story.
+var notableKeywords = []string{"postmortem", "post-mortem", "incident report"}
+
+func isNotableSubject(subject string) bool {
+	lower := strings.ToLower(subject)
+	for _, kw := range notableKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // areaOf reduces a file path to its first one or two directory segments.

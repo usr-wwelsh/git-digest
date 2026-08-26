@@ -101,6 +101,93 @@ func TestManyCommitsCappedWithCount(t *testing.T) {
 	}
 }
 
+func genesisCommitFixture() facts.CommitFacts {
+	return facts.CommitFacts{
+		SHA:     "0000001",
+		Subject: "init",
+		Type:    "other",
+		Genesis: true,
+		Files:   []facts.FileChange{{Path: "README.md"}, {Path: "go.mod"}, {Path: "main.go"}},
+	}
+}
+
+func TestGenesisCommitSoleRepo(t *testing.T) {
+	out := Digest([]facts.RepoFacts{{
+		Name:    "usr-wwelsh/new-thing",
+		Commits: []facts.CommitFacts{genesisCommitFixture()},
+	}})
+	if !strings.Contains(out, "New repo: bootstrapped with an init commit (3 files).") {
+		t.Errorf("missing genesis phrasing:\n%s", out)
+	}
+	if !strings.Contains(out, "usr-wwelsh/new-thing launched as a new repo.") {
+		t.Errorf("missing summary new-repo mention:\n%s", out)
+	}
+	if strings.Contains(out, "Worked on init") {
+		t.Errorf("genesis commit should not be listed as a normal clause:\n%s", out)
+	}
+}
+
+func TestGenesisCommitAmongOtherCommits(t *testing.T) {
+	out := Digest([]facts.RepoFacts{{
+		Name:    "r/x",
+		Commits: []facts.CommitFacts{genesisCommitFixture(), fixCommit()},
+	}})
+	if !strings.Contains(out, "New repo: bootstrapped with an init commit (3 files).") {
+		t.Errorf("missing genesis prefix:\n%s", out)
+	}
+	if !strings.Contains(out, "Fixed systemd absolute path") {
+		t.Errorf("other commit dropped:\n%s", out)
+	}
+}
+
+func TestBiggestChangeSkipsGenesis(t *testing.T) {
+	g := genesisCommitFixture()
+	g.Files = []facts.FileChange{{Path: "vendor/dump.go", Additions: 5000}}
+	out := Digest([]facts.RepoFacts{{
+		Name:    "r/x",
+		Commits: []facts.CommitFacts{g, fixCommit()},
+	}})
+	if strings.Contains(out, "Biggest change in r/x: worked on init") {
+		t.Errorf("genesis commit should not be picked as biggest change:\n%s", out)
+	}
+	if !strings.Contains(out, "Biggest change in r/x: fixed systemd absolute path") {
+		t.Errorf("non-genesis commit should be picked as biggest change:\n%s", out)
+	}
+}
+
+func TestMultipleNewRepos(t *testing.T) {
+	out := Digest([]facts.RepoFacts{
+		{Name: "r/a", Commits: []facts.CommitFacts{genesisCommitFixture()}},
+		{Name: "r/b", Commits: []facts.CommitFacts{genesisCommitFixture()}},
+	})
+	if !strings.Contains(out, "New repos launched: r/a, r/b.") {
+		t.Errorf("missing multi-repo genesis summary:\n%s", out)
+	}
+}
+
+func TestNotableDocCommitGuaranteedMention(t *testing.T) {
+	var commits []facts.CommitFacts
+	for i := 0; i < 7; i++ {
+		commits = append(commits, facts.CommitFacts{
+			SHA:     fmt.Sprintf("c%d", i),
+			Subject: fmt.Sprintf("change number %d", i),
+			Type:    "fix",
+			Files:   []facts.FileChange{{Path: "a.go", Additions: 100 + i}},
+		})
+	}
+	commits = append(commits, facts.CommitFacts{
+		SHA:     "postmortem1",
+		Subject: "add postmortem, retire finetuning route from release path",
+		Type:    "docs",
+		Notable: true,
+		Files:   []facts.FileChange{{Path: "README.md", Additions: 30}},
+	})
+	out := Digest([]facts.RepoFacts{{Name: "r/digest-finetune", Commits: commits}})
+	if !strings.Contains(out, "documented postmortem, retire finetuning route from release path") {
+		t.Errorf("postmortem commit should be guaranteed a mention despite low churn score:\n%s", out)
+	}
+}
+
 func TestEmptyInput(t *testing.T) {
 	if out := Digest(nil); out != "" {
 		t.Errorf("empty input should give empty digest, got %q", out)

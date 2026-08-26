@@ -61,6 +61,11 @@ func Digest(repos []facts.RepoFacts) string {
 	var sb strings.Builder
 	sb.WriteString("## Summary\n\n")
 	sb.WriteString(summaryLine(total, len(repos)))
+	if nr := genesisRepoNames(repos); len(nr) == 1 {
+		sb.WriteString(fmt.Sprintf(" %s launched as a new repo.", nr[0]))
+	} else if len(nr) > 1 {
+		sb.WriteString(fmt.Sprintf(" New repos launched: %s.", strings.Join(nr, ", ")))
+	}
 	if b := breakingRepos(repos); len(b) > 0 {
 		sb.WriteString(" Breaking changes flagged in ")
 		sb.WriteString(strings.Join(b, ", "))
@@ -101,6 +106,9 @@ func biggestChange(repos []facts.RepoFacts) *scored {
 	var best *scored
 	for _, r := range repos {
 		for _, c := range r.Commits {
+			if c.Genesis {
+				continue // surfaced separately as a new-repo launch
+			}
 			if best == nil || c.Score > best.commit.Score {
 				bc := c
 				br := r
@@ -109,6 +117,36 @@ func biggestChange(repos []facts.RepoFacts) *scored {
 		}
 	}
 	return best
+}
+
+// genesisCommit returns a repo's "init" commit, if it shipped one this cycle.
+func genesisCommit(commits []facts.CommitFacts) *facts.CommitFacts {
+	for i := range commits {
+		if commits[i].Genesis {
+			return &commits[i]
+		}
+	}
+	return nil
+}
+
+func withoutGenesis(commits []facts.CommitFacts) []facts.CommitFacts {
+	out := make([]facts.CommitFacts, 0, len(commits))
+	for _, c := range commits {
+		if !c.Genesis {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func genesisRepoNames(repos []facts.RepoFacts) []string {
+	var out []string
+	for _, r := range repos {
+		if genesisCommit(r.Commits) != nil {
+			out = append(out, r.Name)
+		}
+	}
+	return out
 }
 
 func breakingRepos(repos []facts.RepoFacts) []string {
@@ -131,14 +169,56 @@ func sortedByScore(commits []facts.CommitFacts) []facts.CommitFacts {
 	return out
 }
 
+// selectMentioned picks the n commits to mention in a repo paragraph.
+// Notable commits (postmortems, incident reports) are guaranteed a slot even
+// when their score would otherwise be crowded out by higher-churn commits —
+// a small diff can still be the most important story of the day. Remaining
+// slots fill by score, and the result is re-sorted by score for a consistent
+// reading order.
+func selectMentioned(sorted []facts.CommitFacts, n int) []facts.CommitFacts {
+	if len(sorted) <= n {
+		return sorted
+	}
+	picked := make([]bool, len(sorted))
+	out := make([]facts.CommitFacts, 0, n)
+	for i, c := range sorted {
+		if c.Notable && len(out) < n {
+			out = append(out, c)
+			picked[i] = true
+		}
+	}
+	for i, c := range sorted {
+		if len(out) >= n {
+			break
+		}
+		if !picked[i] {
+			out = append(out, c)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	return out
+}
+
 func repoParagraph(r facts.RepoFacts) string {
-	sorted := sortedByScore(r.Commits)
 	var sb strings.Builder
+	commits := r.Commits
+
+	if g := genesisCommit(commits); g != nil {
+		fmt.Fprintf(&sb, "New repo: bootstrapped with an init commit (%s).", plural(len(g.Files), "file"))
+		commits = withoutGenesis(commits)
+		if len(commits) == 0 {
+			return sb.String()
+		}
+		sb.WriteString(" ")
+	}
+
+	sorted := sortedByScore(commits)
 
 	if len(sorted) > maxMentioned {
 		fmt.Fprintf(&sb, "Shipped %d commits: ", len(sorted))
-		clauses := make([]string, 0, maxMentioned)
-		for _, c := range sorted[:maxMentioned] {
+		mentioned := selectMentioned(sorted, maxMentioned)
+		clauses := make([]string, 0, len(mentioned))
+		for _, c := range mentioned {
 			clauses = append(clauses, strings.ToLower(firstWord(c.Type, verbPast))+clauseBody(c))
 		}
 		sb.WriteString(strings.Join(clauses, "; "))

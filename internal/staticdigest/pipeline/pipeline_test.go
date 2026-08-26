@@ -79,6 +79,49 @@ func TestBuildToleratesEmptyPatch(t *testing.T) {
 	}
 }
 
+func TestBuildFlagsInitCommitAsGenesis(t *testing.T) {
+	in := `{"r/new":{"commits":[{"sha":"a","message":"init","url":"","files":[{"filename":"README.md","additions":5,"deletions":0,"patch":""}]}]}}`
+	repos, err := Build(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if !repos[0].Commits[0].Genesis {
+		t.Errorf("commit with subject %q should be flagged Genesis", repos[0].Commits[0].Subject)
+	}
+}
+
+func TestBuildDoesNotFlagOrdinaryCommitAsGenesis(t *testing.T) {
+	repos, err := Build(strings.NewReader(activityJSON))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if repos[0].Commits[0].Genesis {
+		t.Errorf("ordinary commit should not be flagged Genesis")
+	}
+}
+
+func TestBuildFlagsPostmortemAsNotable(t *testing.T) {
+	in := `{"r/x":{"commits":[{"sha":"a","message":"docs: add postmortem, retire finetuning route from release path","url":"","files":[{"filename":"README.md","additions":30,"deletions":0,"patch":""}]}]}}`
+	repos, err := Build(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if !repos[0].Commits[0].Notable {
+		t.Errorf("postmortem commit should be flagged Notable")
+	}
+}
+
+func TestBuildDoesNotFlagOrdinaryDocsAsNotable(t *testing.T) {
+	in := `{"r/x":{"commits":[{"sha":"a","message":"docs: update README","url":"","files":[{"filename":"README.md","additions":5,"deletions":0,"patch":""}]}]}}`
+	repos, err := Build(strings.NewReader(in))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if repos[0].Commits[0].Notable {
+		t.Errorf("ordinary docs commit should not be flagged Notable")
+	}
+}
+
 func TestBuildEmptyInput(t *testing.T) {
 	repos, err := Build(strings.NewReader("{}"))
 	if err != nil || len(repos) != 0 {

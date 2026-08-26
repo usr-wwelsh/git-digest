@@ -32,6 +32,8 @@ type CommitFacts struct {
 	Areas     []string           `json:"areas,omitempty"`
 	RiskFlags []string           `json:"risk_flags,omitempty"`
 	Imports   []string           `json:"imports,omitempty"` // new modules imported by changed code
+	Genesis   bool               `json:"genesis,omitempty"` // repo's own "init" commit
+	Notable   bool               `json:"notable,omitempty"` // narratively significant despite a small diff (postmortem, incident report)
 	Score     float64            `json:"score"`
 }
 
