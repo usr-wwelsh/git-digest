@@ -48,18 +48,35 @@ var leadingVerb = map[string]map[string]bool{
 }
 
 // Digest renders repo facts into the markdown shape git-digest publishes:
-// "## Summary" plus one "### repo" section per repository.
-func Digest(repos []facts.RepoFacts) string {
+// "## Summary" plus one "### repo" section per repository. note, when set,
+// is a manual note (e.g. offline work not captured in GitHub) reproduced
+// verbatim as the Summary's opening sentence — grounded facts never rewrite
+// or paraphrase it.
+func Digest(repos []facts.RepoFacts, note string) string {
 	var total int
 	for _, r := range repos {
 		total += len(r.Commits)
 	}
-	if total == 0 {
+	note = strings.TrimSpace(note)
+	if total == 0 && note == "" {
 		return ""
 	}
 
 	var sb strings.Builder
 	sb.WriteString("## Summary\n\n")
+	if note != "" {
+		sb.WriteString(note)
+		if last := note[len(note)-1]; last != '.' && last != '!' && last != '?' {
+			sb.WriteString(".")
+		}
+		if total > 0 {
+			sb.WriteString(" ")
+		}
+	}
+	if total == 0 {
+		sb.WriteString("\n\n")
+		return sb.String()
+	}
 	sb.WriteString(summaryLine(total, len(repos)))
 	if nr := genesisRepoNames(repos); len(nr) == 1 {
 		sb.WriteString(fmt.Sprintf(" %s launched as a new repo.", nr[0]))

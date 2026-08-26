@@ -26,7 +26,7 @@ func TestSingleFixRepo(t *testing.T) {
 	out := Digest([]facts.RepoFacts{{
 		Name:    "usr-wwelsh/git-digest",
 		Commits: []facts.CommitFacts{fixCommit()},
-	}})
+	}}, "")
 	want := strings.Join([]string{
 		"## Summary",
 		"",
@@ -48,7 +48,7 @@ func TestLeadingVerbNotDoubled(t *testing.T) {
 	c := fixCommit()
 	c.Type = "feat"
 	c.Subject = "Add rate limiting to login"
-	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}})
+	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
 	if strings.Contains(out, "Added add rate") {
 		t.Errorf("verb doubled: %s", out)
 	}
@@ -69,7 +69,7 @@ func TestDepAndRiskSentences(t *testing.T) {
 		RiskFlags: []string{"pipeline config"},
 		Files:     []facts.FileChange{{Path: "package.json"}},
 	}
-	out := Digest([]facts.RepoFacts{{Name: "r/web", Commits: []facts.CommitFacts{c}}})
+	out := Digest([]facts.RepoFacts{{Name: "r/web", Commits: []facts.CommitFacts{c}}}, "")
 	for _, want := range []string{
 		"Tidied web tooling",
 		"Dependency updates: bumped vite ^5.0.0 -> ^6.0.0 (major).",
@@ -92,7 +92,7 @@ func TestManyCommitsCappedWithCount(t *testing.T) {
 			Files:   []facts.FileChange{{Path: "a.go", Additions: i + 1}},
 		})
 	}
-	out := Digest([]facts.RepoFacts{{Name: "r/multi", Commits: commits}})
+	out := Digest([]facts.RepoFacts{{Name: "r/multi", Commits: commits}}, "")
 	if !strings.Contains(out, "Shipped 6 commits:") {
 		t.Errorf("missing count lead: %s", out)
 	}
@@ -115,7 +115,7 @@ func TestGenesisCommitSoleRepo(t *testing.T) {
 	out := Digest([]facts.RepoFacts{{
 		Name:    "usr-wwelsh/new-thing",
 		Commits: []facts.CommitFacts{genesisCommitFixture()},
-	}})
+	}}, "")
 	if !strings.Contains(out, "New repo: bootstrapped with an init commit (3 files).") {
 		t.Errorf("missing genesis phrasing:\n%s", out)
 	}
@@ -131,7 +131,7 @@ func TestGenesisCommitAmongOtherCommits(t *testing.T) {
 	out := Digest([]facts.RepoFacts{{
 		Name:    "r/x",
 		Commits: []facts.CommitFacts{genesisCommitFixture(), fixCommit()},
-	}})
+	}}, "")
 	if !strings.Contains(out, "New repo: bootstrapped with an init commit (3 files).") {
 		t.Errorf("missing genesis prefix:\n%s", out)
 	}
@@ -146,7 +146,7 @@ func TestBiggestChangeSkipsGenesis(t *testing.T) {
 	out := Digest([]facts.RepoFacts{{
 		Name:    "r/x",
 		Commits: []facts.CommitFacts{g, fixCommit()},
-	}})
+	}}, "")
 	if strings.Contains(out, "Biggest change in r/x: worked on init") {
 		t.Errorf("genesis commit should not be picked as biggest change:\n%s", out)
 	}
@@ -159,7 +159,7 @@ func TestMultipleNewRepos(t *testing.T) {
 	out := Digest([]facts.RepoFacts{
 		{Name: "r/a", Commits: []facts.CommitFacts{genesisCommitFixture()}},
 		{Name: "r/b", Commits: []facts.CommitFacts{genesisCommitFixture()}},
-	})
+	}, "")
 	if !strings.Contains(out, "New repos launched: r/a, r/b.") {
 		t.Errorf("missing multi-repo genesis summary:\n%s", out)
 	}
@@ -182,14 +182,44 @@ func TestNotableDocCommitGuaranteedMention(t *testing.T) {
 		Notable: true,
 		Files:   []facts.FileChange{{Path: "README.md", Additions: 30}},
 	})
-	out := Digest([]facts.RepoFacts{{Name: "r/digest-finetune", Commits: commits}})
+	out := Digest([]facts.RepoFacts{{Name: "r/digest-finetune", Commits: commits}}, "")
 	if !strings.Contains(out, "documented postmortem, retire finetuning route from release path") {
 		t.Errorf("postmortem commit should be guaranteed a mention despite low churn score:\n%s", out)
 	}
 }
 
+func TestNotePrependedVerbatimToSummary(t *testing.T) {
+	out := Digest([]facts.RepoFacts{{
+		Name:    "usr-wwelsh/git-digest",
+		Commits: []facts.CommitFacts{fixCommit()},
+	}}, "Juggling a birthday party but managed to get a little work in today")
+	want := "## Summary\n\nJuggling a birthday party but managed to get a little work in today. " +
+		"1 commit across 1 repo. Biggest change in usr-wwelsh/git-digest: fixed systemd absolute path (promptSystemd())."
+	if !strings.HasPrefix(out, want) {
+		t.Errorf("note should lead the summary verbatim:\ngot:\n%s\nwant prefix:\n%s", out, want)
+	}
+}
+
+func TestNoteAlreadyPunctuatedNotDoubled(t *testing.T) {
+	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{fixCommit()}}},
+		"Shipped from the airport.")
+	if strings.Contains(out, "airport..") {
+		t.Errorf("note punctuation doubled:\n%s", out)
+	}
+}
+
+func TestNoteWithoutAnyCommits(t *testing.T) {
+	out := Digest(nil, "Family thing today, no code.")
+	if !strings.HasPrefix(out, "## Summary\n\nFamily thing today, no code.") {
+		t.Errorf("note-only digest malformed:\n%s", out)
+	}
+	if strings.Contains(out, "## Per-Repo Activity") {
+		t.Errorf("no repo section expected when there's no activity:\n%s", out)
+	}
+}
+
 func TestEmptyInput(t *testing.T) {
-	if out := Digest(nil); out != "" {
+	if out := Digest(nil, ""); out != "" {
 		t.Errorf("empty input should give empty digest, got %q", out)
 	}
 }

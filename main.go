@@ -206,7 +206,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "static: %v\n", err)
 			os.Exit(1)
 		}
-		digest, err := staticdigest.Generate(bytes.NewReader(activity))
+		digest, err := staticdigest.Generate(bytes.NewReader(activity), *note)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "static: %v\n", err)
 			os.Exit(1)
