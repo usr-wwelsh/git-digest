@@ -103,6 +103,20 @@ var dayPhrases = map[string][]string{
 	"refactor": {"Restructuring filled the day.", "A cleanup-and-restructure kind of day."},
 }
 
+// soloDayTemplates carry a single-commit day's whole story in one sentence:
+// %[1]s is the repo name, %[2]s the commit's clause (verb + body, evidence
+// and risk tail included). Replacing the flat "1 commit across 1 repo."
+// count plus a "Biggest change in X: ..." sentence that just repeats the
+// per-repo paragraph below — with one integrated, varied line keeps the same
+// grounded detail without the deadpan double-statement.
+var soloDayTemplates = []string{
+	"Quiet day — %s %s.",
+	"Just one commit today: %s %s.",
+	"The lone commit landed in %s, which %s.",
+	"One commit did the work: %s %s.",
+	"Small day, but %s %s.",
+}
+
 // Digest renders repo facts into the markdown shape git-digest publishes:
 // "## Summary" plus one "### repo" section per repository. note, when set,
 // is a manual note (e.g. offline work not captured in GitHub) reproduced
@@ -141,7 +155,16 @@ func Digest(repos []facts.RepoFacts, note string) string {
 			sb.WriteString(" ")
 		}
 	}
-	sb.WriteString(summaryLine(total, len(repos)))
+	var best *scored
+	if !multi {
+		best = biggestChange(repos)
+	}
+	solo := best != nil && total == 1
+	if solo {
+		sb.WriteString(soloCommitSentence(best))
+	} else {
+		sb.WriteString(summaryLine(total, len(repos)))
+	}
 	if nr := genesisRepoNames(repos); len(nr) == 1 {
 		sb.WriteString(fmt.Sprintf(" %s launched as a new repo.", nr[0]))
 	} else if len(nr) > 1 {
@@ -153,7 +176,7 @@ func Digest(repos []facts.RepoFacts, note string) string {
 		sb.WriteString(".")
 	}
 	if !multi {
-		if best := biggestChange(repos); best != nil {
+		if best != nil && !solo {
 			sb.WriteString(fmt.Sprintf(" Biggest change in %s: %s.",
 				repoBaseName(best.repo.Name), strings.ToLower(firstWord(best.commit.Type, verbPast))+clauseBody(best.commit)))
 		}
@@ -262,6 +285,21 @@ func pickVariant(pool []string, seed uint32) string {
 		return ""
 	}
 	return pool[int(seed%uint32(len(pool)))]
+}
+
+// soloCommitSentence renders the whole Summary for a true single-commit day
+// (one repo, one non-genesis commit) as a single varied sentence. The
+// template is picked from the commit's own SHA rather than variationSeed's
+// repo+total hash, so the phrasing still changes day to day even when the
+// same repo lands a solo commit repeatedly — repo name and commit count
+// alone would otherwise pick the same template every time.
+func soloCommitSentence(best *scored) string {
+	h := fnv.New32a()
+	h.Write([]byte(best.repo.Name))
+	h.Write([]byte(best.commit.SHA))
+	tmpl := soloDayTemplates[int(h.Sum32()%uint32(len(soloDayTemplates)))]
+	clause := strings.ToLower(firstWord(best.commit.Type, verbPast)) + clauseBody(best.commit)
+	return fmt.Sprintf(tmpl, repoBaseName(best.repo.Name), clause)
 }
 
 // dayCharacterization summarizes a multi-repo day's dominant commit type in

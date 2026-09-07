@@ -30,7 +30,7 @@ func TestSingleFixRepo(t *testing.T) {
 	want := strings.Join([]string{
 		"## Summary",
 		"",
-		"1 commit across 1 repo. Biggest change in git-digest: fixed systemd absolute path.",
+		"Quiet day — git-digest fixed systemd absolute path.",
 		"",
 		"## Per-Repo Activity",
 		"",
@@ -223,7 +223,7 @@ func TestNotePrependedVerbatimToSummary(t *testing.T) {
 		Commits: []facts.CommitFacts{fixCommit()},
 	}}, "Juggling a birthday party but managed to get a little work in today")
 	want := "## Summary\n\nJuggling a birthday party but managed to get a little work in today. " +
-		"1 commit across 1 repo. Biggest change in git-digest: fixed systemd absolute path."
+		"Quiet day — git-digest fixed systemd absolute path."
 	if !strings.HasPrefix(out, want) {
 		t.Errorf("note should lead the summary verbatim:\ngot:\n%s\nwant prefix:\n%s", out, want)
 	}
@@ -409,9 +409,41 @@ func TestDayCharacterizationMultiRepoOnly(t *testing.T) {
 	}
 }
 
-func TestSingleRepoSummaryUnchanged(t *testing.T) {
+func TestSingleCommitDayGetsIntegratedSentence(t *testing.T) {
 	out := Digest([]facts.RepoFacts{{Name: "r/solo", Commits: []facts.CommitFacts{fixCommit()}}}, "")
-	if !strings.Contains(out, "1 commit across 1 repo. Biggest change in solo:") {
-		t.Errorf("single-repo summary shape changed unexpectedly:\n%s", out)
+	if strings.Contains(out, "1 commit across 1 repo") || strings.Contains(out, "Biggest change in") {
+		t.Errorf("a single-commit day should fold count and detail into one line, not repeat the clause:\n%s", out)
+	}
+	if !strings.Contains(out, "fixed systemd absolute path") {
+		t.Errorf("summary should still carry the actual commit detail:\n%s", out)
+	}
+	if again := Digest([]facts.RepoFacts{{Name: "r/solo", Commits: []facts.CommitFacts{fixCommit()}}}, ""); again != out {
+		t.Errorf("solo-day sentence must be deterministic:\n%s\n%s", out, again)
+	}
+}
+
+func TestSoloDaySentenceVariesBySHA(t *testing.T) {
+	c1 := fixCommit()
+	c2 := fixCommit()
+	c2.SHA = "different-sha"
+	out1 := Digest([]facts.RepoFacts{{Name: "r/solo", Commits: []facts.CommitFacts{c1}}}, "")
+	out2 := Digest([]facts.RepoFacts{{Name: "r/solo", Commits: []facts.CommitFacts{c2}}}, "")
+	if out1 == out2 {
+		t.Errorf("a different commit SHA on the same solo repo should be able to pick a different template:\n%s", out1)
+	}
+}
+
+// TestMultiCommitSoloRepoKeepsBiggestChange guards the case the closer
+// doesn't cover: a single repo with more than one commit still needs the
+// literal "Biggest change" sentence to say which of several commits mattered
+// most — a themed phrase alone would drop that information.
+func TestMultiCommitSoloRepoKeepsBiggestChange(t *testing.T) {
+	c2 := fixCommit()
+	c2.SHA = "b2"
+	c2.Subject = "unrelated followup"
+	c2.Files = []facts.FileChange{{Path: "other/file.go"}}
+	out := Digest([]facts.RepoFacts{{Name: "r/solo", Commits: []facts.CommitFacts{fixCommit(), c2}}}, "")
+	if !strings.Contains(out, "Biggest change in solo:") {
+		t.Errorf("multi-commit solo-repo day should keep the biggest-change sentence:\n%s", out)
 	}
 }
