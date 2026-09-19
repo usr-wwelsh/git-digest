@@ -77,16 +77,14 @@ var pastForm = func() map[string]bool {
 // sensitive ground: the flag was detected in the patch, the tail just names
 // what such a change means.
 var riskTails = map[string]string{
-	"possible secret in added lines": "review for leaked credentials",
-	"destructive schema operation":   "contains destructive schema ops",
-	"security-sensitive paths":       "hardening security-sensitive paths",
-	"schema migration":               "shipping the schema migration",
-	"public API surface":             "changing the public API surface",
-	"pipeline config":                "CI now exercises this path",
+	"destructive schema operation": "contains destructive schema ops",
+	"security-sensitive paths":     "hardening security-sensitive paths",
+	"schema migration":             "shipping the schema migration",
+	"public API surface":           "changing the public API surface",
+	"pipeline config":              "CI now exercises this path",
 }
 
 var tailPriority = []string{
-	"possible secret in added lines",
 	"destructive schema operation",
 	"security-sensitive paths",
 	"schema migration",

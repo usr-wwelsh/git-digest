@@ -39,32 +39,6 @@ func TestPublicAPISurface(t *testing.T) {
 	}
 }
 
-func TestAWSSecretInAddedLine(t *testing.T) {
-	got := Flags([]facts.FileChange{fc("cmd/deploy.go", `key := "AKIAIOSFODNN7EXAMPLE"`)})
-	found := false
-	for _, f := range got {
-		if f == "possible secret in added lines" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("got %q", got)
-	}
-}
-
-func TestPrivateKeyHeader(t *testing.T) {
-	got := Flags([]facts.FileChange{fc("tls/key.pem", "-----BEGIN RSA PRIVATE KEY-----")})
-	found := false
-	for _, f := range got {
-		if f == "possible secret in added lines" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("got %q", got)
-	}
-}
-
 func TestDropTable(t *testing.T) {
 	got := Flags([]facts.FileChange{fc("db/schema.sql", "DROP TABLE users;")})
 	if len(got) != 1 || got[0] != "destructive schema operation" {

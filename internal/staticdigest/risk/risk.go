@@ -1,6 +1,6 @@
 // Package risk applies deterministic path and content rules to flag commits
 // that warrant attention: security-sensitive paths, migrations, pipelines,
-// public API surface, and possible secrets in added lines.
+// and public API surface.
 package risk
 
 import (
@@ -16,17 +16,8 @@ const (
 	flagMigration  = "schema migration"
 	flagPipeline   = "pipeline config"
 	flagAPI        = "public API surface"
-	flagSecret     = "possible secret in added lines"
 	flagDestructiv = "destructive schema operation"
 )
-
-var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
-	regexp.MustCompile(`-----BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----`),
-	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{20,}`),
-	regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]+`),
-	regexp.MustCompile(`(?i)(api[_-]?key|secret|password|passwd)\s*[:=]\s*["'][^"'$\{]{8,}["']`),
-}
 
 var destructivePattern = regexp.MustCompile(`(?i)\b(DROP\s+(TABLE|COLUMN|DATABASE)|TRUNCATE\s+TABLE)\b`)
 
@@ -65,11 +56,6 @@ func Flags(files []facts.FileChange) []string {
 			add(flag)
 		}
 		for _, line := range f.AddedLines {
-			for _, re := range secretPatterns {
-				if re.MatchString(line) {
-					add(flagSecret)
-				}
-			}
 			if destructivePattern.MatchString(line) {
 				add(flagDestructiv)
 			}
