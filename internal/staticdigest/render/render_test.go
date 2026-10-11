@@ -36,7 +36,7 @@ func TestSingleFixRepo(t *testing.T) {
 		"",
 		"### git-digest",
 		"",
-		"Fixed systemd absolute path.",
+		"Fixed systemd absolute path. It touched 1 file, adding 38 lines and removing 6, mostly in cmd.",
 		"",
 	}, "\n")
 	if out != want {
@@ -71,9 +71,9 @@ func TestDepAndRiskSentences(t *testing.T) {
 	}
 	out := Digest([]facts.RepoFacts{{Name: "r/web", Commits: []facts.CommitFacts{c}}}, "")
 	for _, want := range []string{
-		"Tidied web tooling",
-		"Dependency updates: bumped vite ^5.0.0 -> ^6.0.0 (major).",
-		"Watch: pipeline config; includes breaking changes.",
+		"Upgraded web tooling",
+		"On the dependency side, it bumped vite from ^5.0.0 to ^6.0.0 (a major jump).",
+		"Heads-up: it touches CI pipeline config and includes breaking changes.",
 		"breaking changes",
 	} {
 		if !strings.Contains(out, want) {
@@ -93,7 +93,7 @@ func TestManyCommitsCappedWithCount(t *testing.T) {
 		})
 	}
 	out := Digest([]facts.RepoFacts{{Name: "r/multi", Commits: commits}}, "")
-	if !strings.Contains(out, "Shipped 6 commits:") {
+	if !strings.Contains(out, "6 commits landed here") {
 		t.Errorf("missing count lead: %s", out)
 	}
 	if got := strings.Count(out, "Fixed "); got > 4 {
@@ -147,10 +147,10 @@ func TestBiggestChangeSkipsGenesis(t *testing.T) {
 		Name:    "r/x",
 		Commits: []facts.CommitFacts{g, fixCommit()},
 	}}, "")
-	if strings.Contains(out, "Biggest change in x: worked on init") {
+	if strings.Contains(out, "Everything landed in x, which worked on init") {
 		t.Errorf("genesis commit should not be picked as biggest change:\n%s", out)
 	}
-	if !strings.Contains(out, "Biggest change in x: fixed systemd absolute path") {
+	if !strings.Contains(out, "Everything landed in x, which fixed systemd absolute path") {
 		t.Errorf("non-genesis commit should be picked as biggest change:\n%s", out)
 	}
 }
@@ -183,7 +183,7 @@ func TestNotableDocCommitGuaranteedMention(t *testing.T) {
 		Files:   []facts.FileChange{{Path: "README.md", Additions: 30}},
 	})
 	out := Digest([]facts.RepoFacts{{Name: "r/digest-finetune", Commits: commits}}, "")
-	if !strings.Contains(out, "documented postmortem, retired finetuning route from release path") {
+	if !strings.Contains(out, "added postmortem, retired finetuning route from release path") {
 		t.Errorf("postmortem commit should be guaranteed a mention despite low churn score:\n%s", out)
 	}
 }
@@ -193,10 +193,10 @@ func TestCommaSegmentVerbsConjugated(t *testing.T) {
 	c.Type = "feat"
 	c.Subject = "recognize init commits and postmortems, dampen data-dump churn"
 	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
-	if strings.Contains(out, "added recognize") {
-		t.Errorf("leading verb should be stripped regardless of type:\n%s", out)
+	if strings.Contains(out, "Added recognize") {
+		t.Errorf("subject verb should replace the type verb:\n%s", out)
 	}
-	want := "Added init commits and postmortems, dampened data-dump churn"
+	want := "Recognized init commits and postmortems, dampened data-dump churn"
 	if !strings.Contains(out, want) {
 		t.Errorf("missing %q in:\n%s", want, out)
 	}
@@ -204,8 +204,8 @@ func TestCommaSegmentVerbsConjugated(t *testing.T) {
 
 func TestVerbStrippedAcrossTypes(t *testing.T) {
 	for _, tc := range []struct{ typ, subj, want string }{
-		{"fix", "wire retry into download worker", "Fixed retry into download worker"},
-		{"feat", "dampen reward hacking on short rollouts", "Added reward hacking on short rollouts"},
+		{"fix", "wire retry into download worker", "Wired retry into download worker"},
+		{"feat", "dampen reward hacking on short rollouts", "Dampened reward hacking on short rollouts"},
 	} {
 		c := fixCommit()
 		c.Type = tc.typ
@@ -281,7 +281,7 @@ func TestEvidenceOnlyFromMinedTokens(t *testing.T) {
 		"\tstatic := flag.Bool(\"static\", false, \"generate deterministically\")",
 	}
 	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
-	if !strings.Contains(out, "(-static)") {
+	if !strings.Contains(out, "around the -static flag") {
 		t.Errorf("mined flag missing from evidence:\n%s", out)
 	}
 }
@@ -317,7 +317,7 @@ func TestNoMergeWithoutSharedArea(t *testing.T) {
 			Files: []facts.FileChange{{Path: "misc/f/f.go"}}},
 	}
 	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: commits}}, "")
-	if strings.Contains(out, " and ") {
+	if strings.Contains(strings.SplitN(out, "## Per-Repo", 2)[1], "first thing and second thing") {
 		t.Errorf("unrelated commits merged:\n%s", out)
 	}
 }
@@ -334,11 +334,8 @@ func TestScopeTopicLead(t *testing.T) {
 		})
 	}
 	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: commits}}, "")
-	if !strings.Contains(out, "Staticdigest: ") {
+	if !strings.Contains(out, "most of them in staticdigest") {
 		t.Errorf("missing scope topic lead:\n%s", out)
-	}
-	if strings.Contains(out, "Shipped 5 commits") {
-		t.Errorf("count lead should be replaced by scope lead:\n%s", out)
 	}
 }
 
@@ -347,7 +344,7 @@ func TestRiskFlagConsequenceTail(t *testing.T) {
 	c.RiskFlags = []string{"security-sensitive paths"}
 	c.Files[0].Path = "internal/auth/login.go"
 	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
-	if !strings.Contains(out, "hardening security-sensitive paths") {
+	if !strings.Contains(out, "Heads-up: it touches security-sensitive paths.") {
 		t.Errorf("missing consequence tail:\n%s", out)
 	}
 }
@@ -364,11 +361,8 @@ func TestMultiRepoSummaryLeadsWithDominantRepo(t *testing.T) {
 		{Name: "r/quiet", Commits: []facts.CommitFacts{quiet}},
 		{Name: "r/busy", Commits: busy},
 	}, "")
-	if !strings.Contains(out, "busy led the day:") {
+	if !strings.Contains(out, "Most of the activity was in busy, which refactored the big rewrite") {
 		t.Errorf("summary should lead with the dominant repo:\n%s", out)
-	}
-	if !strings.Contains(out, "Refactored the big rewrite") {
-		t.Errorf("lead should cite the dominant repo's top commit:\n%s", out)
 	}
 	if strings.Contains(out, "Biggest change in") {
 		t.Errorf("redundant biggest-change sentence should be gone on multi-repo days:\n%s", out)
@@ -433,17 +427,46 @@ func TestSoloDaySentenceVariesBySHA(t *testing.T) {
 	}
 }
 
-// TestMultiCommitSoloRepoKeepsBiggestChange guards the case the closer
-// doesn't cover: a single repo with more than one commit still needs the
-// literal "Biggest change" sentence to say which of several commits mattered
-// most — a themed phrase alone would drop that information.
-func TestMultiCommitSoloRepoKeepsBiggestChange(t *testing.T) {
+func TestMultiCommitSoloRepoNamesWhatLanded(t *testing.T) {
 	c2 := fixCommit()
 	c2.SHA = "b2"
 	c2.Subject = "unrelated followup"
 	c2.Files = []facts.FileChange{{Path: "other/file.go"}}
 	out := Digest([]facts.RepoFacts{{Name: "r/solo", Commits: []facts.CommitFacts{fixCommit(), c2}}}, "")
-	if !strings.Contains(out, "Biggest change in solo:") {
-		t.Errorf("multi-commit solo-repo day should keep the biggest-change sentence:\n%s", out)
+	if !strings.Contains(out, "Everything landed in solo, which fixed systemd absolute path and unrelated followup.") {
+		t.Errorf("multi-commit solo-repo day should name what landed:\n%s", out)
+	}
+}
+
+func TestReleaseCommitsFoldIntoOneSentence(t *testing.T) {
+	commits := []facts.CommitFacts{
+		{SHA: "1", Subject: "release 0.9.1", Type: "chore"},
+		{SHA: "2", Subject: "release 0.9.0", Type: "chore"},
+	}
+	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: commits}}, "")
+	if !strings.Contains(out, "Cut releases 0.9.1 and 0.9.0.") {
+		t.Errorf("release commits should fold into one sentence:\n%s", out)
+	}
+	if strings.Contains(out, "Tidied release") {
+		t.Errorf("release bumps should not read as tidying:\n%s", out)
+	}
+}
+
+func TestUnknownVerbEndingInIzeIsConjugated(t *testing.T) {
+	c := fixCommit()
+	c.Subject = "absolutize relative image urls"
+	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
+	if !strings.Contains(out, "Absolutized relative image URLs.") {
+		t.Errorf("imperative should become past tense with URLs restored:\n%s", out)
+	}
+}
+
+func TestNounLedSubjectKeepsTypeVerb(t *testing.T) {
+	c := fixCommit()
+	c.Type = "feat"
+	c.Subject = "support for ARM builds"
+	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
+	if !strings.Contains(out, "Added support for ARM builds.") {
+		t.Errorf("noun-led subject mangled:\n%s", out)
 	}
 }

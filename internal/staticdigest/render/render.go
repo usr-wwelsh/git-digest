@@ -62,7 +62,33 @@ var imperativePast = map[string]string{
 	"test": "tested", "tidy": "tidied", "truncate": "truncated",
 	"tune": "tuned", "unify": "unified", "update": "updated",
 	"upgrade": "upgraded", "use": "used", "validate": "validated",
-	"wire": "wired",
+	"wire": "wired", "adjust": "adjusted", "align": "aligned", "apply": "applied",
+	"bundle": "bundled", "collapse": "collapsed", "combine": "combined",
+	"configure": "configured", "consolidate": "consolidated", "convert": "converted",
+	"correct": "corrected", "create": "created", "define": "defined",
+	"derive": "derived", "detect": "detected", "disable": "disabled",
+	"display": "displayed", "emit": "emitted", "ensure": "ensured",
+	"exclude": "excluded", "expand": "expanded", "fetch": "fetched",
+	"filter": "filtered", "flatten": "flattened", "fold": "folded",
+	"forward": "forwarded", "generate": "generated", "hide": "hid",
+	"highlight": "highlighted", "include": "included", "install": "installed",
+	"keep": "kept", "load": "loaded", "lock": "locked", "mute": "muted",
+	"parse": "parsed", "populate": "populated", "prefer": "preferred",
+	"preserve": "preserved", "propagate": "propagated", "provide": "provided",
+	"prune": "pruned", "put": "put", "raise": "raised", "read": "read",
+	"rebuild": "rebuilt", "reduce": "reduced", "refine": "refined",
+	"register": "registered", "reject": "rejected", "render": "rendered",
+	"reorder": "reordered", "reorganize": "reorganized", "require": "required",
+	"reset": "reset", "resize": "resized", "respect": "respected",
+	"restore": "restored", "reuse": "reused", "reveal": "revealed",
+	"reword": "reworded", "rewrite": "rewrote", "run": "ran", "save": "saved",
+	"scrub": "scrubbed", "select": "selected", "send": "sent", "separate": "separated",
+	"serve": "served", "shorten": "shortened", "sort": "sorted", "surface": "surfaced",
+	"sync": "synced", "throttle": "throttled", "tighten": "tightened",
+	"toggle": "toggled", "track": "tracked", "treat": "treated", "trigger": "triggered",
+	"trim": "trimmed", "tweak": "tweaked", "unblock": "unblocked", "warn": "warned",
+	"widen": "widened", "wrap": "wrapped", "write": "wrote", "clarify": "clarified",
+	"regenerate": "regenerated", "rebase": "rebased", "stop": "stopped",
 }
 
 var pastForm = func() map[string]bool {
@@ -73,23 +99,26 @@ var pastForm = func() map[string]bool {
 	return m
 }()
 
-// riskTails attaches a grounded consequence to commits whose diffs touch
-// sensitive ground: the flag was detected in the patch, the tail just names
-// what such a change means.
-var riskTails = map[string]string{
-	"destructive schema operation": "contains destructive schema ops",
-	"security-sensitive paths":     "hardening security-sensitive paths",
-	"schema migration":             "shipping the schema migration",
-	"public API surface":           "changing the public API surface",
-	"pipeline config":              "CI now exercises this path",
+var riskPhrases = map[string]string{
+	"destructive schema operation": "destructive schema operations",
+	"security-sensitive paths":     "security-sensitive paths",
+	"schema migration":             "a schema migration",
+	"public API surface":           "the public API surface",
+	"pipeline config":              "CI pipeline config",
 }
 
-var tailPriority = []string{
-	"destructive schema operation",
-	"security-sensitive paths",
-	"schema migration",
-	"public API surface",
-	"pipeline config",
+var acronyms = map[string]string{
+	"url": "URL", "urls": "URLs", "uri": "URI", "api": "API", "apis": "APIs",
+	"ci": "CI", "cli": "CLI", "ui": "UI", "ux": "UX", "json": "JSON",
+	"yaml": "YAML", "html": "HTML", "css": "CSS", "sql": "SQL", "http": "HTTP",
+	"https": "HTTPS", "tls": "TLS", "ssh": "SSH", "dns": "DNS", "cpu": "CPU",
+	"gpu": "GPU", "jwt": "JWT", "pwa": "PWA", "id": "ID", "ids": "IDs",
+}
+
+var releaseRe = regexp.MustCompile(`(?i)^(?:release|version|bump version to|bump to|tag)\s+v?(\d+(?:\.\d+)*[\w.+-]*)$`)
+
+var notVerbFollowers = map[string]bool{
+	"for": true, "of": true, "is": true, "are": true, "was": true, "in": true,
 }
 
 var dayPhrases = map[string][]string{
@@ -147,12 +176,6 @@ func Digest(repos []facts.RepoFacts, note string) string {
 	}
 
 	multi := len(repos) > 1
-	if multi {
-		if d := dominantRepo(repos); d != nil {
-			fmt.Fprintf(&sb, "%s led the day: %s.", repoBaseName(d.repo.Name), strings.TrimSpace(leadClause(d)))
-			sb.WriteString(" ")
-		}
-	}
 	var best *scored
 	if !multi {
 		best = biggestChange(repos)
@@ -161,6 +184,9 @@ func Digest(repos []facts.RepoFacts, note string) string {
 	if solo {
 		sb.WriteString(soloCommitSentence(best))
 	} else {
+		if lead := leadSentences(repos, multi); lead != "" {
+			sb.WriteString(lead + " ")
+		}
 		sb.WriteString(summaryLine(total, len(repos)))
 	}
 	if nr := genesisRepoNames(repos); len(nr) == 1 {
@@ -173,12 +199,7 @@ func Digest(repos []facts.RepoFacts, note string) string {
 		sb.WriteString(strings.Join(b, ", "))
 		sb.WriteString(".")
 	}
-	if !multi {
-		if best != nil && !solo {
-			sb.WriteString(fmt.Sprintf(" Biggest change in %s: %s.",
-				repoBaseName(best.repo.Name), strings.ToLower(firstWord(best.commit.Type, verbPast))+clauseBody(best.commit)))
-		}
-	} else if closer := dayCharacterization(repos, variationSeed(repos, total)); closer != "" {
+	if closer := dayCharacterization(repos, variationSeed(repos, total)); closer != "" && multi {
 		sb.WriteString(" " + closer)
 	}
 	sb.WriteString("\n\n")
@@ -257,13 +278,66 @@ func dominantRepo(repos []facts.RepoFacts) *scored {
 	return best
 }
 
-// leadClause renders the dominant repo's top-scoring unit for the summary.
-func leadClause(d *scored) string {
-	units := buildUnits(sortedByScore(withoutGenesis(d.repo.Commits)))
-	if len(units) == 0 {
-		return clauseBody(d.commit)
+// repoSummaryClause renders a repo's top units plus any releases as one
+// lowercase verb phrase for the Summary.
+func repoSummaryClause(r facts.RepoFacts, maxUnits int) string {
+	st := storyOf(r.Commits)
+	var parts []string
+	for i, u := range st.units {
+		if i >= maxUnits {
+			break
+		}
+		parts = append(parts, lowerFirst(unitClause(u)))
 	}
-	return unitClause(units[0])
+	if rc := st.releaseClause(); rc != "" {
+		parts = append(parts, lowerFirst(rc))
+	}
+	return joinList(dropRepeatedVerbs(parts))
+}
+
+// leadSentences opens the Summary with the dominant repo's story, then what
+// the other repos did, so the Summary reads as prose rather than a count.
+func leadSentences(repos []facts.RepoFacts, multi bool) string {
+	d := dominantRepo(repos)
+	if d == nil {
+		return ""
+	}
+	var out []string
+	lead := repoSummaryClause(d.repo, 2)
+	if lead == "" {
+		return ""
+	}
+	name := repoBaseName(d.repo.Name)
+	if multi {
+		out = append(out, fmt.Sprintf("Most of the activity was in %s, which %s.", name, lead))
+	} else {
+		out = append(out, fmt.Sprintf("Everything landed in %s, which %s.", name, lead))
+	}
+	var rest []string
+	for _, r := range repos {
+		if r.Name == d.repo.Name {
+			continue
+		}
+		if c := repoSummaryClause(r, 1); c != "" {
+			rest = append(rest, repoBaseName(r.Name)+" "+c)
+		}
+	}
+	for i, r := range rest {
+		switch {
+		case i == 0:
+			out = append(out, strings.Replace(r, " ", " also ", 1)+".")
+		case i == 1:
+			out = append(out, "Meanwhile, "+r+".")
+		default:
+			var names []string
+			for _, o := range rest[i:] {
+				names = append(names, o[:strings.Index(o, " ")])
+			}
+			out = append(out, "Smaller changes landed in "+joinList(names)+".")
+			return strings.Join(out, " ")
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // variationSeed derives a stable pseudo-random seed from the digest's own
@@ -296,7 +370,7 @@ func soloCommitSentence(best *scored) string {
 	h.Write([]byte(best.repo.Name))
 	h.Write([]byte(best.commit.SHA))
 	tmpl := soloDayTemplates[int(h.Sum32()%uint32(len(soloDayTemplates)))]
-	clause := strings.ToLower(firstWord(best.commit.Type, verbPast)) + clauseBody(best.commit)
+	clause := lowerFirst(unitClause(unit{commits: []facts.CommitFacts{best.commit}}))
 	return fmt.Sprintf(tmpl, repoBaseName(best.repo.Name), clause)
 }
 
@@ -511,49 +585,175 @@ func selectMentionedUnits(units []unit, n int) []unit {
 	return out
 }
 
+type story struct {
+	units    []unit
+	releases []string
+}
+
+// storyOf folds release-bump commits into a version list and the rest into
+// score-ordered units.
+func storyOf(commits []facts.CommitFacts) story {
+	var st story
+	var rest []facts.CommitFacts
+	for _, c := range withoutGenesis(commits) {
+		if m := releaseRe.FindStringSubmatch(strings.TrimSpace(c.Subject)); m != nil {
+			st.releases = append(st.releases, m[1])
+			continue
+		}
+		rest = append(rest, c)
+	}
+	st.units = buildUnits(sortedByScore(rest))
+	return st
+}
+
+func (s story) releaseClause() string {
+	switch len(s.releases) {
+	case 0:
+		return ""
+	case 1:
+		return "Cut release " + s.releases[0]
+	}
+	return "Cut releases " + joinList(s.releases)
+}
+
+var chainLeads = []string{"", "It also ", "On top of that, it ", "Finally, it "}
+
+func chain(clauses []string) string {
+	out := make([]string, 0, len(clauses))
+	for i, c := range clauses {
+		if i >= len(chainLeads) {
+			i = len(chainLeads) - 1
+		}
+		if i == 0 {
+			out = append(out, c+".")
+			continue
+		}
+		out = append(out, chainLeads[i]+lowerFirst(c)+".")
+	}
+	return strings.Join(out, " ")
+}
+
+// dropRepeatedVerbs strips a clause's leading verb when the previous clause
+// opened with the same one, so "fixed a, fixed b" reads "fixed a and b".
+func dropRepeatedVerbs(clauses []string) []string {
+	out := make([]string, len(clauses))
+	prev := ""
+	for i, c := range clauses {
+		verb, rest, _ := strings.Cut(c, " ")
+		if i > 0 && verb == prev && rest != "" {
+			out[i] = rest
+		} else {
+			out[i] = c
+		}
+		prev = verb
+	}
+	return out
+}
+
+func joinList(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	case 2:
+		return items[0] + " and " + items[1]
+	}
+	return strings.Join(items[:len(items)-1], ", ") + ", and " + items[len(items)-1]
+}
+
 func repoParagraph(r facts.RepoFacts) string {
 	var sb strings.Builder
-	commits := r.Commits
 
-	if g := genesisCommit(commits); g != nil {
+	if g := genesisCommit(r.Commits); g != nil {
 		fmt.Fprintf(&sb, "New repo: bootstrapped with an init commit (%s).", plural(len(g.Files), "file"))
-		commits = withoutGenesis(commits)
-		if len(commits) == 0 {
+		if len(withoutGenesis(r.Commits)) == 0 {
 			return sb.String()
 		}
 		sb.WriteString(" ")
 	}
 
-	units := buildUnits(sortedByScore(commits))
-
-	if len(units) > maxMentioned {
-		if scope := dominantScope(units); scope != "" {
-			sb.WriteString(capFirst(scope) + ": ")
-		} else {
-			fmt.Fprintf(&sb, "Shipped %d commits: ", countCommits(units))
+	st := storyOf(r.Commits)
+	if len(st.units) > maxMentioned {
+		intro := fmt.Sprintf("%d commits landed here", countCommits(st.units)+len(st.releases))
+		if scope := dominantScope(st.units); scope != "" {
+			intro += ", most of them in " + scope
 		}
-		mentioned := selectMentionedUnits(units, maxMentioned)
-		clauses := make([]string, 0, len(mentioned))
-		for _, u := range mentioned {
-			clauses = append(clauses, strings.ToLower(firstWord(u.commits[0].Type, verbPast))+unitClause(u))
+		sb.WriteString(intro + ". ")
+		var parts []string
+		for _, u := range selectMentionedUnits(st.units, maxMentioned) {
+			parts = append(parts, lowerFirst(unitClause(u)))
 		}
-		sb.WriteString(strings.Join(clauses, "; "))
-		sb.WriteString(".")
+		if rc := st.releaseClause(); rc != "" {
+			parts = append(parts, lowerFirst(rc))
+		}
+		sb.WriteString("It " + joinList(dropRepeatedVerbs(parts)) + ".")
 	} else {
-		sentences := make([]string, 0, len(units))
-		for _, u := range units {
-			sentences = append(sentences, firstWord(u.commits[0].Type, verbPast)+unitClause(u)+".")
+		var clauses []string
+		for _, u := range st.units {
+			clauses = append(clauses, unitClause(u))
 		}
-		sb.WriteString(strings.Join(sentences, " "))
+		if rc := st.releaseClause(); rc != "" {
+			clauses = append(clauses, rc)
+		}
+		sb.WriteString(chain(clauses))
 	}
 
-	if deps := depSentence(r.Commits); deps != "" {
-		sb.WriteString(" " + deps)
-	}
-	if w := watchSentence(r.Commits); w != "" {
-		sb.WriteString(" " + w)
+	for _, extra := range []string{statSentence(r.Commits), depSentence(r.Commits), watchSentence(r.Commits)} {
+		if extra != "" {
+			sb.WriteString(" " + extra)
+		}
 	}
 	return sb.String()
+}
+
+// statSentence reports the footprint of a repo's day: files touched, lines
+// added and removed, and the busiest directories.
+func statSentence(commits []facts.CommitFacts) string {
+	paths := map[string]bool{}
+	var adds, dels int
+	for _, c := range commits {
+		for _, f := range c.Files {
+			paths[f.Path] = true
+			adds += f.Additions
+			dels += f.Deletions
+		}
+	}
+	if len(paths) == 0 {
+		return ""
+	}
+	s := "It touched " + plural(len(paths), "file")
+	switch {
+	case adds > 0 && dels > 0:
+		s += fmt.Sprintf(", adding %s and removing %d", plural(adds, "line"), dels)
+	case adds > 0:
+		s += ", adding " + plural(adds, "line")
+	case dels > 0:
+		s += ", removing " + plural(dels, "line")
+	}
+	areaCount := map[string]int{}
+	for p := range paths {
+		if a := facts.AreaOf(p); a != "" {
+			areaCount[a]++
+		}
+	}
+	areas := make([]string, 0, len(areaCount))
+	for a := range areaCount {
+		areas = append(areas, a)
+	}
+	sort.Slice(areas, func(i, j int) bool {
+		if areaCount[areas[i]] != areaCount[areas[j]] {
+			return areaCount[areas[i]] > areaCount[areas[j]]
+		}
+		return areas[i] < areas[j]
+	})
+	if len(areas) > 2 {
+		areas = areas[:2]
+	}
+	if len(areas) > 0 {
+		s += ", mostly in " + joinList(areas)
+	}
+	return s + "."
 }
 
 // firstWord returns the past-tense verb for a commit type.
@@ -564,57 +764,94 @@ func firstWord(typ string, verbs map[string]string) string {
 	return verbs["other"]
 }
 
-func clauseBody(c facts.CommitFacts) string {
-	body := subjectBody(c)
-	ev := evidence([]facts.CommitFacts{c})
-	tail := riskTail(c.RiskFlags)
-	if ev != "" {
-		body += " " + ev
+func lowerFirst(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
 	}
-	if tail != "" {
-		body += " — " + tail
-	}
-	return " " + body
+	r[0] = unicode.ToLower(r[0])
+	return string(r)
 }
 
-// unitClause renders one unit: template verb, each commit's cleaned subject
-// joined with "and", shared evidence, and at most one consequence tail.
-func unitClause(u unit) string {
-	parts := make([]string, 0, len(u.commits))
-	var flags []string
-	for _, c := range u.commits {
-		if body := subjectBody(c); body != "" {
-			parts = append(parts, body)
+// pastOf returns the past tense of a recognized imperative verb, guessing
+// only for unambiguous -ize/-ify forms; "" when w is not a verb.
+func pastOf(w string) string {
+	lw := strings.ToLower(w)
+	if p, ok := imperativePast[lw]; ok {
+		return p
+	}
+	if pastForm[lw] {
+		return lw
+	}
+	switch {
+	case len(lw) >= 7 && strings.HasSuffix(lw, "ize"):
+		return lw + "d"
+	case len(lw) >= 6 && strings.HasSuffix(lw, "ify"):
+		return strings.TrimSuffix(lw, "y") + "ied"
+	}
+	return ""
+}
+
+func fixAcronyms(s string) string {
+	words := strings.Split(s, " ")
+	for i, w := range words {
+		core := strings.TrimRight(w, ",.;:)!?")
+		if a, ok := acronyms[core]; ok {
+			words[i] = a + w[len(core):]
 		}
-		flags = append(flags, c.RiskFlags...)
 	}
-	body := strings.Join(parts, " and ")
-	if body == "" {
-		body = strings.ToLower(strings.TrimSpace(u.commits[0].Subject))
-	}
-	if ev := evidence(u.commits); ev != "" {
-		body += " " + ev
-	}
-	if tail := riskTail(flags); tail != "" {
-		body += " — " + tail
-	}
-	return " " + body
+	return strings.Join(words, " ")
 }
 
-// subjectBody cleans a commit subject into clause text: the leading verb is
-// stripped (the template verb carries it), and comma-separated segments get
-// their own verbs conjugated to past tense.
-func subjectBody(c facts.CommitFacts) string {
-	subj := strings.TrimSpace(c.Subject)
-	if subj == "" {
-		return ""
+// commitLead splits a commit into the past-tense verb that opens its clause
+// and the remaining body. A recognized leading verb in the subject becomes
+// the clause verb itself; otherwise the commit type supplies one.
+func commitLead(c facts.CommitFacts) (string, string) {
+	segs := strings.Split(strings.TrimSpace(c.Subject), ", ")
+	words := strings.Fields(segs[0])
+	verb := firstWord(c.Type, verbPast)
+	if len(words) > 1 && !notVerbFollowers[strings.ToLower(words[1])] {
+		if past := pastOf(words[0]); past != "" {
+			verb = capFirst(past)
+			words = words[1:]
+		}
 	}
-	segs := strings.Split(subj, ", ")
-	out := cleanSubject(segs[0])
+	body := lowerLead(strings.Join(words, " "))
 	for _, seg := range segs[1:] {
-		out += ", " + conjugateSegment(seg)
+		body += ", " + conjugateSegment(seg)
 	}
-	return out
+	if strings.TrimSpace(body) == "" {
+		body = "a change"
+	}
+	return verb, fixAcronyms(body)
+}
+
+func lowerLead(s string) string {
+	words := strings.Fields(s)
+	if len(words) == 0 || acronymLike(words[0]) {
+		return s
+	}
+	return lowerFirst(s)
+}
+
+// unitClause renders one unit as a capitalized clause: the verb, each
+// commit's body joined with "and", and shared evidence.
+func unitClause(u unit) string {
+	verb, body := commitLead(u.commits[0])
+	parts := []string{body}
+	for _, c := range u.commits[1:] {
+		v, b := commitLead(c)
+		if v == verb {
+			parts = append(parts, b)
+		} else {
+			parts = append(parts, lowerFirst(v)+" "+b)
+		}
+	}
+	text := verb + " " + strings.Join(parts, " and ")
+	if ev := evidence(u.commits); ev != "" {
+		text += " " + ev
+	}
+	return text
 }
 
 // conjugateSegment rewrites a comma-separated subject segment so its verb
@@ -624,10 +861,9 @@ func conjugateSegment(seg string) string {
 	if len(words) == 0 {
 		return seg
 	}
-	first := strings.ToLower(words[0])
-	if past, ok := imperativePast[first]; ok {
+	if past := pastOf(words[0]); past != "" {
 		words[0] = past
-	} else if !pastForm[first] && !acronymLike(words[0]) {
+	} else if !acronymLike(words[0]) {
 		head := []rune(words[0])
 		head[0] = unicode.ToLower(head[0])
 		words[0] = string(head)
@@ -640,30 +876,6 @@ var acronymLike = func(w string) bool {
 	return len(r) > 1 && unicode.IsUpper(r[1])
 }
 
-// cleanSubject strips a subject's leading verb when it's a recognized
-// imperative (the template verb carries the tense), then lowercases the
-// first rune unless it looks like an acronym (JWTAuth).
-func cleanSubject(subj string) string {
-	words := strings.Fields(strings.TrimSpace(subj))
-	if len(words) == 0 {
-		return ""
-	}
-	first := strings.ToLower(words[0])
-	stripped := words
-	if _, imp := imperativePast[first]; imp || pastForm[first] {
-		stripped = words[1:]
-	}
-	if len(stripped) == 0 {
-		return ""
-	}
-	if !acronymLike(stripped[0]) {
-		head := []rune(stripped[0])
-		head[0] = unicode.ToLower(head[0])
-		stripped[0] = string(head)
-	}
-	return strings.Join(stripped, " ")
-}
-
 var (
 	goFlagRe  = regexp.MustCompile(`flag\.\w+(?:Var)?\("([^"]+)"`)
 	longOptRe = regexp.MustCompile(`(?:^|[\s"'=(])--([a-z][a-z0-9][a-z0-9-]*)\b`)
@@ -672,13 +884,34 @@ var (
 
 // evidence cites the user-facing surface of a change: CLI flags and route
 // paths mined from added lines. Function names and directory areas are
-// deliberately not cited — parenthesized identifiers read as robotic.
+// deliberately not cited — identifiers read as robotic.
 func evidence(commits []facts.CommitFacts) string {
-	items := minedTokens(commits)
-	if len(items) == 0 {
+	var flags, routes []string
+	for _, t := range minedTokens(commits) {
+		if strings.HasPrefix(t, "-") {
+			flags = append(flags, t)
+		} else {
+			routes = append(routes, t)
+		}
+	}
+	var parts []string
+	if len(flags) > 0 {
+		parts = append(parts, "the "+joinList(flags)+" "+pluralWord(len(flags), "flag"))
+	}
+	if len(routes) > 0 {
+		parts = append(parts, "the "+joinList(routes)+" "+pluralWord(len(routes), "route"))
+	}
+	if len(parts) == 0 {
 		return ""
 	}
-	return "(" + strings.Join(items, ", ") + ")"
+	return "around " + joinList(parts)
+}
+
+func pluralWord(n int, noun string) string {
+	if n == 1 {
+		return noun
+	}
+	return noun + "s"
 }
 
 // minedTokens extracts flag names and route paths from added lines — the
@@ -723,21 +956,6 @@ func minedTokens(commits []facts.CommitFacts) []string {
 	return out
 }
 
-// riskTail returns the highest-priority consequence phrase for a set of risk
-// flags, or "" when nothing was flagged.
-func riskTail(flags []string) string {
-	set := make(map[string]bool, len(flags))
-	for _, f := range flags {
-		set[f] = true
-	}
-	for _, f := range tailPriority {
-		if set[f] {
-			return riskTails[f]
-		}
-	}
-	return ""
-}
-
 func depSentence(commits []facts.CommitFacts) string {
 	var parts []string
 	seen := map[string]bool{}
@@ -750,9 +968,9 @@ func depSentence(commits []facts.CommitFacts) string {
 			seen[key] = true
 			switch d.Action {
 			case "bumped":
-				p := fmt.Sprintf("bumped %s %s -> %s", d.Name, d.Old, d.New)
+				p := fmt.Sprintf("bumped %s from %s to %s", d.Name, d.Old, d.New)
 				if d.Major {
-					p += " (major)"
+					p += " (a major jump)"
 				}
 				parts = append(parts, p)
 			case "added":
@@ -760,7 +978,7 @@ func depSentence(commits []facts.CommitFacts) string {
 			case "removed":
 				parts = append(parts, "removed "+d.Name)
 			case "downgraded":
-				parts = append(parts, fmt.Sprintf("downgraded %s %s -> %s", d.Name, d.Old, d.New))
+				parts = append(parts, fmt.Sprintf("downgraded %s from %s to %s", d.Name, d.Old, d.New))
 			}
 		}
 	}
@@ -768,9 +986,9 @@ func depSentence(commits []facts.CommitFacts) string {
 		return ""
 	}
 	if len(parts) > 3 {
-		parts = append(parts[:3], fmt.Sprintf("+%d more", len(parts)-3))
+		parts = append(parts[:3], fmt.Sprintf("%d more", len(parts)-3))
 	}
-	return "Dependency updates: " + strings.Join(parts, ", ") + "."
+	return "On the dependency side, it " + joinList(parts) + "."
 }
 
 func watchSentence(commits []facts.CommitFacts) string {
@@ -785,19 +1003,21 @@ func watchSentence(commits []facts.CommitFacts) string {
 	if len(flagSet) == 0 && !breaking {
 		return ""
 	}
-	var flags []string
+	var phrases []string
 	for f := range flagSet {
-		flags = append(flags, f)
+		if p, ok := riskPhrases[f]; ok {
+			phrases = append(phrases, p)
+		} else {
+			phrases = append(phrases, f)
+		}
 	}
-	sort.Strings(flags)
-	s := "Watch:"
-	if len(flags) > 0 {
-		s += " " + strings.Join(flags, ", ") + ";"
+	sort.Strings(phrases)
+	var clauses []string
+	if len(phrases) > 0 {
+		clauses = append(clauses, "touches "+joinList(phrases))
 	}
 	if breaking {
-		s += " includes breaking changes."
-	} else {
-		s = strings.TrimSuffix(s, ";") + "."
+		clauses = append(clauses, "includes breaking changes")
 	}
-	return s
+	return "Heads-up: it " + joinList(clauses) + "."
 }
