@@ -60,6 +60,7 @@ It asks, one question at a time, for your GitHub token, LLM backend, model, repo
 | `-push`      | false   | Copy digest into the portfolio repo's `digests/` folder |
 | `-gateway`   | false   | Use your LLM gateway instead of the Claude CLI |
 | `-static`    | false   | Skip the LLM entirely, render with the deterministic static-digest pipeline |
+| `-lan`       | false   | With `-serve`, listen on all interfaces instead of loopback only |
 | `-settings`  | false   | Run the interactive setup and exit |
 | `-no-patches`| false   | Skip file diffs in sparse commits |
 | `-no-prev`   | false   | Don't include the previous digest as a style reference |
@@ -102,7 +103,7 @@ Binary is created at `./git-digest`. No third-party Go dependencies.
 
 ## Web UI
 
-Running with `-serve` starts an HTTP server on port 4242 with:
+Running with `-serve` starts an HTTP server on `127.0.0.1:4242` (add `-lan` to expose it on all interfaces) with:
 - Index page listing all generated digests with previews
 - Individual digest view with rendered markdown
 - GitHub-style dark theme, zero client-side JavaScript

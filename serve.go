@@ -107,7 +107,14 @@ header{background:#161b22;border-bottom:1px solid #30363d;padding:14px 24px;disp
 </body>
 </html>`))
 
-func startServer(digestsDir, mdPath string) error {
+func serveAddr(lan bool) string {
+	if lan {
+		return fmt.Sprintf(":%d", port)
+	}
+	return fmt.Sprintf("127.0.0.1:%d", port)
+}
+
+func startServer(digestsDir, mdPath string, lan bool) error {
 	entries, err := loadEntries(digestsDir)
 	if err != nil {
 		return err
@@ -144,7 +151,7 @@ func startServer(digestsDir, mdPath string) error {
 		http.NotFound(w, r)
 	})
 
-	srv := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: mux}
+	srv := &http.Server{Addr: serveAddr(lan), Handler: mux}
 
 	go func() {
 		sig := make(chan os.Signal, 1)

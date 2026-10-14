@@ -85,6 +85,7 @@ func main() {
 	gateway := flag.Bool("gateway", false, "use your OpenAI-compatible LLM gateway (GIT_DIGEST_GATEWAY_URL)")
 	local := flag.Bool("local", false, "alias for -gateway")
 	static := flag.Bool("static", false, "generate the digest with the deterministic static-digest pipeline instead of an LLM (no API, no network beyond GitHub, no hallucinations)")
+	lan := flag.Bool("lan", false, "with -serve, listen on all interfaces instead of loopback only")
 	settings := flag.Bool("settings", false, "run interactive setup and exit")
 	noPatches := flag.Bool("no-patches", false, "skip file diffs in sparse commits")
 	noPrev := flag.Bool("no-prev", false, "skip adding previous digest to context")
@@ -234,7 +235,7 @@ func main() {
 	}
 
 	if *serve {
-		if err := startServer(digestsDir, mdPath); err != nil {
+		if err := startServer(digestsDir, mdPath, *lan); err != nil {
 			fmt.Fprintf(os.Stderr, "serve: %v\n", err)
 			os.Exit(1)
 		}
