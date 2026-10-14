@@ -928,7 +928,7 @@ func minedTokens(commits []facts.CommitFacts) []string {
 			return
 		}
 		for _, s := range subjects {
-			if strings.Contains(s, strings.ToLower(tok)) {
+			if strings.Contains(s, strings.ToLower(strings.TrimLeft(tok, "-"))) {
 				return // already named in the subject — don't cite twice
 			}
 		}

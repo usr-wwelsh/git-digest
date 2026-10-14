@@ -470,3 +470,15 @@ func TestNounLedSubjectKeepsTypeVerb(t *testing.T) {
 		t.Errorf("noun-led subject mangled:\n%s", out)
 	}
 }
+
+func TestEvidenceSkipsFlagNamedInSubject(t *testing.T) {
+	c := fixCommit()
+	c.Subject = "add dry-run flag"
+	c.Files[0].AddedLines = []string{
+		"\tdry := flag.Bool(\"dry-run\", false, \"print without writing\")",
+	}
+	out := Digest([]facts.RepoFacts{{Name: "r/x", Commits: []facts.CommitFacts{c}}}, "")
+	if strings.Contains(out, "-dry-run") {
+		t.Errorf("flag already named in the subject should not be cited again:\n%s", out)
+	}
+}
