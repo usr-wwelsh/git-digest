@@ -61,6 +61,7 @@ It asks, one question at a time, for your GitHub token, LLM backend, model, repo
 | `-gateway`   | false   | Use your LLM gateway instead of the Claude CLI |
 | `-static`    | false   | Skip the LLM entirely, render with the deterministic static-digest pipeline |
 | `-lan`       | false   | With `-serve`, listen on all interfaces instead of loopback only |
+| `-dry-run`   | false   | Print the digest without saving, pushing, or serving |
 | `-settings`  | false   | Run the interactive setup and exit |
 | `-no-patches`| false   | Skip file diffs in sparse commits |
 | `-no-prev`   | false   | Don't include the previous digest as a style reference |

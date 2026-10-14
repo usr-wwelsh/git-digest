@@ -76,6 +76,13 @@ type repoCommitSet struct {
 	commits     []commit
 }
 
+func validateFlags(dryRun, serve, push bool) error {
+	if dryRun && (serve || push) {
+		return fmt.Errorf("-dry-run cannot be combined with -serve or -push")
+	}
+	return nil
+}
+
 func main() {
 	loadEnvFile()
 	lookback := flag.Int("lookback", 1, "days to look back")
@@ -86,6 +93,7 @@ func main() {
 	local := flag.Bool("local", false, "alias for -gateway")
 	static := flag.Bool("static", false, "generate the digest with the deterministic static-digest pipeline instead of an LLM (no API, no network beyond GitHub, no hallucinations)")
 	lan := flag.Bool("lan", false, "with -serve, listen on all interfaces instead of loopback only")
+	dryRun := flag.Bool("dry-run", false, "print the digest without saving, pushing, or serving")
 	settings := flag.Bool("settings", false, "run interactive setup and exit")
 	noPatches := flag.Bool("no-patches", false, "skip file diffs in sparse commits")
 	noPrev := flag.Bool("no-prev", false, "skip adding previous digest to context")
@@ -93,6 +101,11 @@ func main() {
 	personality := flag.String("personality", "", "override tone/voice of the digest (e.g. \"bombastic almost comical blogger but no goofy\")")
 	note := flag.String("note", "", "manual note to include in digest (e.g. private/offline work not in GitHub)")
 	flag.Parse()
+
+	if err := validateFlags(*dryRun, *serve, *push); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
 	if *settings {
 		if err := runSettings(); err != nil {
@@ -217,6 +230,10 @@ func main() {
 	} else if err := generateWithLLM(token, username, *lookback, active, totalCommits, *noPatches, *noPrev, *personality, *note, *gateway, *local, &output); err != nil {
 		fmt.Fprintf(os.Stderr, "digest: %v\n", err)
 		os.Exit(1)
+	}
+
+	if *dryRun {
+		return
 	}
 
 	mdPath, err := writeDigest(time.Now(), *lookback, output.String(), digestsDir)
